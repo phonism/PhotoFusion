@@ -1,10 +1,7 @@
 #!/bin/bash
 
+mkdir -p build
 cd build
-cmake -DCMAKE_OSX_ARCHITECTURES=x86_64 ../
+cmake -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" ../
 make -j 30
 cd ..
-
-mkdir -p output
-mkdir -p output/bin
-cp build/simple_raw2tiff output/bin/.

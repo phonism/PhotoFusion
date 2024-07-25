@@ -23,12 +23,31 @@ struct RawImage {
     unsigned short (*image)[4];
     std::vector<float> pre_mul = {1.9722067118, 0.9411969781, 1.1376225948, 0.9411969781};
     unsigned short curve[0x10000];
-    int (*histogram)[0x2000];
+    int (*histogram)[0x2000] = NULL;
 
-    unsigned *oprof;
+    unsigned *oprof = NULL;
 
     double gamm[6] = {0.45, 4.5, 0, 0, 0, 0};
     FILE *output;
+
+    ~RawImage() {
+        if (image) {
+            delete[] image;
+            image = nullptr;
+        }
+        if (histogram) {
+            delete[] histogram;
+            histogram = nullptr;
+        }
+        if (oprof) {
+            delete[] oprof;
+            oprof = nullptr;
+        }
+        if (output) {
+            fclose(output);
+            output = nullptr;
+        }
+    }
 
     std::string to_string() {
         std::cout << "==========================================================" << std::endl;

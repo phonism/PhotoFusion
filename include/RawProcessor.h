@@ -1,7 +1,7 @@
 #ifndef RAW_PROCESSOR_H
 #define RAW_PROCESSOR_H
 
-#include <omp.h>
+// #include <omp.h>
 #include <arpa/inet.h>
 #include <time.h>
 #include "RawImage.h"
