@@ -1,14 +1,9 @@
 #ifndef RAW_IMAGE_H
 #define RAW_IMAGE_H
 
-#include <vector>
-#include <cstring>
-#include <array>
-#include <cstdint>
-#include <cfloat>
-#include <string>
-#include <iostream>
-#include <cmath>
+#include <float.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 struct RawImage {
     unsigned int width;
@@ -19,9 +14,9 @@ struct RawImage {
     unsigned short maximum = 16383;
     unsigned int filters = 3031741620;
     
-    std::vector<unsigned short> raw_data;
+    unsigned short* raw_data;
     unsigned short (*image)[4];
-    std::vector<float> pre_mul = {1.9722067118, 0.9411969781, 1.1376225948, 0.9411969781};
+    float cam_mul[4] = {1.9722067118f, 0.9411969781f, 1.1376225948f, 0.9411969781f};
     unsigned short curve[0x10000];
     int (*histogram)[0x2000] = NULL;
 
@@ -31,16 +26,20 @@ struct RawImage {
     FILE *output;
 
     ~RawImage() {
+        if (raw_data) {
+            free(raw_data);
+            raw_data = nullptr;
+        }
         if (image) {
-            delete[] image;
+            free(image);
             image = nullptr;
         }
         if (histogram) {
-            delete[] histogram;
+            free(histogram);
             histogram = nullptr;
         }
         if (oprof) {
-            delete[] oprof;
+            free(oprof);
             oprof = nullptr;
         }
         if (output) {
@@ -49,7 +48,12 @@ struct RawImage {
         }
     }
 
-    std::string to_string() {
+    const char* to_string() {
+        return "NONE";
+    }
+
+    /*
+    char* to_string() {
         std::cout << "==========================================================" << std::endl;
         std::cout << "height: " << height << " width:" << width << std::endl;
         std::cout << "black_level:" << black_level << std::endl;
@@ -73,6 +77,7 @@ struct RawImage {
         std::cout << "==========================================================" << std::endl;
         return "";
     }
+    */
 };
 
 #endif // RAW_IMAGE_H

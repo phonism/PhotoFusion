@@ -1,5 +1,18 @@
 #include "RawProcessor.h"
 
+#ifdef USE_OPENMP
+#include <omp.h>
+#endif
+#include <iostream>
+#include <algorithm>
+#include <mutex>  // 包含 std::mutex
+
+#ifdef USE_GCD
+#include <dispatch/dispatch.h>
+#endif
+
+std::mutex log_mutex;  // 定义互斥锁
+
 void RawProcessor::raw2image(RawImage& raw_image) {
     // raw_image.image.resize(raw_image.height * raw_image.width);
 
@@ -8,11 +21,59 @@ void RawProcessor::raw2image(RawImage& raw_image) {
 
     int alloc_sz = maxHeight * maxWidth;
 
-    raw_image.image = (unsigned short(*)[4])realloc(raw_image.image, alloc_sz * sizeof(*raw_image.image));
+    // raw_image.image = (unsigned short(*)[4])realloc(raw_image.image, alloc_sz * sizeof(*raw_image.image));
+    raw_image.image = (unsigned short(*)[4])malloc(alloc_sz * sizeof(*raw_image.image));
     memset(raw_image.image, 0, alloc_sz * sizeof(*raw_image.image));
 
-    // OpenMP parallel for loop
-    // #pragma omp parallel for schedule(dynamic) default(none) shared(raw_image, maxHeight, maxWidth)
+#ifdef USE_GCD
+    dispatch_queue_t queue = dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0);
+    dispatch_group_t group = dispatch_group_create();
+
+    // 使用原子变量来减少临界区的开销
+    __block unsigned short global_max = 0;
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(1);
+
+    int chunk_size = maxHeight / 4; // 根据实际情况调整块大小
+
+    for (int chunk_start = 0; chunk_start < maxHeight; chunk_start += chunk_size) {
+        int chunk_end = std::min(chunk_start + chunk_size, maxHeight);
+
+        dispatch_group_async(group, queue, ^{
+            unsigned short ldmax = 0;
+            for (int row = chunk_start; row < chunk_end; ++row) {
+                for (int col = 0; col < maxWidth; ++col) {
+                    int idx = row * maxWidth + col;
+                    int fc = FC(raw_image.filters, row, col); // 预先计算 FC(row, col)
+                    unsigned short val = raw_image.raw_data[idx];
+                    if (val > raw_image.black_level) {
+                        val -= raw_image.black_level;
+                        if (val > ldmax)
+                            ldmax = val;
+                    } else {
+                        val = 0;
+                    }
+                    raw_image.image[idx][fc] = val;
+                }
+            }
+
+            // 使用原子操作来更新 global_max
+            dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+            if (ldmax > global_max) {
+                global_max = ldmax;
+            }
+            dispatch_semaphore_signal(semaphore);
+        });
+    }
+
+    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+    raw_image.data_max = global_max;
+
+    dispatch_release(group);
+    dispatch_release(semaphore);
+#else
+#ifdef USE_OPENMP
+    #pragma omp parallel for schedule(dynamic) default(none) shared(raw_image, maxHeight, maxWidth)
+#endif 
     for (int row = 0; row < maxHeight; ++row) {
         unsigned short ldmax = 0;
         for (int col = 0; col < maxWidth; ++col) {
@@ -28,17 +89,22 @@ void RawProcessor::raw2image(RawImage& raw_image) {
             }
             raw_image.image[idx][fc] = val;
         }
+#ifdef USE_OPENMP
         // 临界区保护 dmax 更新
-        // #pragma omp critical
-        if (ldmax > raw_image.data_max) {
-            raw_image.data_max = ldmax;
+        #pragma omp critical
+#endif
+        {
+            if (ldmax > raw_image.data_max) {
+                raw_image.data_max = ldmax;
+            }
         }
     }
+#endif
 }
 
 void RawProcessor::scale_colors(RawImage& raw_image) {
     float dmin = DBL_MAX, dmax = 0;
-    for (const auto mul : raw_image.pre_mul) {
+    for (const auto mul : raw_image.cam_mul) {
         if (mul < dmin) {
             dmin = mul;
         }
@@ -52,9 +118,8 @@ void RawProcessor::scale_colors(RawImage& raw_image) {
 
     std::vector<float> scale_mul(4);
     for (int i = 0; i < 4; ++i) {
-        scale_mul[i] = (raw_image.pre_mul[i] /= dmax) * 65535.0 / maximum;
+        scale_mul[i] = (raw_image.cam_mul[i] /= dmax) * 65535.0 / maximum;
     }
-
     for (int idx = 0; idx < raw_image.height * raw_image.width; ++idx) {
         auto& pix = raw_image.image[idx];
         for (int i = 0; i < 4; ++i) {
@@ -327,18 +392,52 @@ void RawProcessor::ahd_interpolate(RawImage& raw_image) {
     cielab(0, 0);
     border_interpolate(raw_image, 5);
 
-    // int buffer_count = omp_get_max_threads();
+#ifdef USE_GCD
+    dispatch_queue_t queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+    dispatch_apply((raw_image.height - 7) / (AHD_TILE - 6) + 1, queue, ^(size_t index) {
+        int top = 2 + index * (AHD_TILE - 6);
+        if (top >= raw_image.height - 5) return;
+        std::vector<char> thread_local_buffer(26 * AHD_TILE * AHD_TILE);
+        char* buffer = thread_local_buffer.data();
+        unsigned short(*rgb)[AHD_TILE][AHD_TILE][3];
+        short(*lab)[AHD_TILE][AHD_TILE][3];
+        char(*homo)[AHD_TILE][2];
+
+        rgb = (unsigned short(*)[AHD_TILE][AHD_TILE][3])buffer;
+        lab = (short(*)[AHD_TILE][AHD_TILE][3])(buffer + 12 * AHD_TILE * AHD_TILE);
+        homo = (char(*)[AHD_TILE][2])(buffer + 24 * AHD_TILE * AHD_TILE);
+
+        for (int left = 2; !terminate_flag && (left < raw_image.width - 5); left += AHD_TILE - 6) {
+            int block_width = std::min(AHD_TILE, (int)raw_image.width - left - 2);
+            int block_height = std::min(AHD_TILE, (int)raw_image.height - top - 2);
+            ahd_interpolate_green_h_and_v(raw_image, top, left, rgb);
+            ahd_interpolate_r_and_b_and_convert_to_cielab(raw_image, top, left, rgb, lab);
+            ahd_interpolate_build_homogeneity_map(raw_image, top, left, lab, homo);
+            ahd_interpolate_combine_homogeneous_pixels(raw_image, top, left, rgb, homo);
+        }
+    });
+#else
+
+#ifdef USE_OPENMP
+    int buffer_count = omp_get_max_threads();
+#else
     int buffer_count = 1;
-    size_t buffer_size = 26 * AHD_TILE * AHD_TILE; /* 1664 kB */
+#endif
+    size_t buffer_size = 26 * AHD_TILE * AHD_TILE;
     char** buffers = (char**)calloc(sizeof(char*), buffer_count); 
     for (int i = 0; i < buffer_count; i++) {   
         buffers[i] = (char*)calloc(buffer_size, sizeof(char));
     }   
 
-    // #pragma omp parallel for schedule(dynamic) default(none) shared(raw_image, terminate_flag) firstprivate(buffers)
+#ifdef USE_OPENMP
+    #pragma omp parallel for schedule(dynamic) default(none) shared(raw_image, terminate_flag) firstprivate(buffers)
+#endif
     for (int top = 2; top < raw_image.height - 5; top += AHD_TILE - 6) {
-        // char* buffer = buffers[omp_get_thread_num()];
+#ifdef USE_OPENMP
+        char* buffer = buffers[omp_get_thread_num()];
+#else
         char* buffer = buffers[0];
+#endif
         unsigned short(*rgb)[AHD_TILE][AHD_TILE][3];
         short(*lab)[AHD_TILE][AHD_TILE][3];
         char(*homo)[AHD_TILE][2];
@@ -359,6 +458,7 @@ void RawProcessor::ahd_interpolate(RawImage& raw_image) {
         }
     }
     free(buffers);
+#endif
 }
 
 void gamma_curve(RawImage& raw_image, double pwr, double ts, int mode, int imax) {
@@ -520,7 +620,6 @@ void RawProcessor::convert_to_rgb(RawImage& raw_image) {
             floorf(1000.f / gamm[0] + .5f) / 1000.f,
             floorf(gamm[1] * 1000.0f + .5f) / 1000.f);
 
-
 	raw_image.oprof = (unsigned *)calloc(phead[0], 1);
     memcpy(raw_image.oprof, phead, sizeof phead);
     oprof[0] = 132 + 12 * pbody[0];
@@ -656,30 +755,42 @@ void tiff_head(RawImage& raw_image, struct new_tiff_hdr *th, int full) {
     tiff_set(th, &th->nexif, 37386, 5, 1, TOFF(th->rat[8]));
 }
 
+void RawProcessor::gamma_adjustment(RawImage& raw_image) {
+    int c;
+    int perc, val, total, t_white = 0x2000;
+    int height = raw_image.height;
+    int width = raw_image.width;
+
+    auto& histogram = raw_image.histogram;
+    auto& gamm = raw_image.gamm;
+
+    perc = width * height * 0.01;
+    // TODO: 这里有有个auto_bright的问题,注释的是auto birght       
+    /*
+    for (t_white = c = 0; c < 3; c++) {
+        for (val = 0x2000, total = 0; --val > 32;) {
+            std::cout << val << std::endl;
+            if ((total += histogram[c][val]) > perc) {
+                break;
+            }
+        }
+        if (t_white < val) {
+            t_white = val;
+        }
+    }*/
+    gamma_curve(raw_image, gamm[0], gamm[1], 2, int((t_white << 3) / 1.));
+}
+
 void write_ppm_tiff(RawImage& raw_image) {
     try { 
         struct new_tiff_hdr th;
         ushort *ppm2;
         int c, row, col, soff, rstep, cstep;
-        int perc, val, total, t_white = 0x2000;
         int height = raw_image.height;
         int width = raw_image.width;
 
-        auto& histogram = raw_image.histogram;
         auto& curve = raw_image.curve;
-        auto& gamm = raw_image.gamm;
         auto& oprof = raw_image.oprof;
-
-        perc = width * height * 0.01;
-
-        for (t_white = c = 0; c < 3; c++) {
-            for (val = 0x2000, total = 0; --val > 32;)
-                if ((total += histogram[c][val]) > perc)
-                    break;
-            if (t_white < val)
-                t_white = val;
-        }
-        gamma_curve(raw_image, gamm[0], gamm[1], 2, int((t_white << 3) / 1.));
 
         int output_bps = 8;
         std::vector<unsigned char> ppm(width * 4 * output_bps / 8);
@@ -687,9 +798,7 @@ void write_ppm_tiff(RawImage& raw_image) {
         tiff_head(raw_image, &th, 1);
         fwrite(&th, sizeof th, 1, raw_image.output);
         if (oprof) {
-            // TODO
             fwrite(oprof, ntohl(oprof[0]), 1, raw_image.output);
-            // fwrite(oprof, oprof[0], 1, raw_image.output);
         }
         soff = 0;
         cstep = 1;

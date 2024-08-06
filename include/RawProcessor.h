@@ -3,10 +3,12 @@
 
 // #include <omp.h>
 #include <arpa/inet.h>
+#include <vector>
+#include <iostream>
 #include <time.h>
+#include <cmath>
 #include "RawImage.h"
 #include "Common.h"
-
 
 struct tiff_tag {
     unsigned short tag, type;
@@ -70,6 +72,8 @@ public:
     static void convert_to_rgb(RawImage& raw_image);
 
     static int ppm_tiff_writer(RawImage& raw_image, const char *filename);
+
+    static void gamma_adjustment(RawImage& raw_image);
 
 };
 
