@@ -7,8 +7,8 @@
 #include <iostream>
 #include <time.h>
 #include <cmath>
-#include "RawImage.h"
-#include "Common.h"
+#include "raw_image.h"
+#include "common.h"
 
 struct tiff_tag {
     unsigned short tag, type;

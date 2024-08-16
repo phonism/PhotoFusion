@@ -2,7 +2,7 @@
 #define IMAGE_IO_H
 
 #include <sys/stat.h>
-#include "RawImage.h"
+#include "raw_image.h"
 
 struct tiff_data {
     int t_width, t_height, bps, comp, phint, offset, t_flip, samples, bytes, extrasamples;

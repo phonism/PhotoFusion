@@ -5,6 +5,9 @@ project(PhotoFusion)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+#set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pg")
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pg")
+
 # 添加选项以启用或禁用 OpenMP
 option(USE_OPENMP "Enable OpenMP support" ON)
 option(USE_FFTW "Enable FFTW support" ON)

@@ -3,10 +3,10 @@
 #include <string>
 #include <algorithm>
 #include <vector>
-#include "ImageIO.h"
-#include "PhotoFusionAPI.h"
+#include "image_io.h"
+#include "photofusion_api.h"
 
-// namespace fs = std::__fs::filesystem;
+/*
 namespace fs = std::filesystem;
 
 bool has_suffix(const std::string& str, const std::string& suffix) {
@@ -67,4 +67,9 @@ int main() {
     }
     process_stack(imageArray, images.size());
     return 0;
+}
+*/
+
+int main() {
+    std::cout << "FUCK" << std::endl;
 }

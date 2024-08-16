@@ -1,10 +1,11 @@
 // PhotoFusionAPI.cpp
-#include "PhotoFusionAPI.h"
 #include <iostream>
-#include "ImageIO.h"
-#include "RawProcessor.h"
-#include "Stack.h"
-#include <RawImage.h>
+#include "photofusion_api.h"
+#include "image_io.h"
+#include "raw_processor.h"
+#include "stack.h"
+#include "raw_image.h"
+#include "denoise.h"
 
 class PhotoFusionImpl {
 public:
@@ -33,7 +34,6 @@ public:
             long long sum = 0;
             for (int i = 0; i < height * width; ++i) {
                 raw_image->raw_data[i] = libraw_image[i];
-                // sum += libraw_image[i] - 1008;
             }
             if (cam_mul != nullptr) {
                 for (int i = 0; i < 4; ++i) {
@@ -48,6 +48,9 @@ public:
             raw_processor.ahd_interpolate(*raw_image);
             raw_processor.convert_to_rgb(*raw_image);
             raw_processor.gamma_adjustment(*raw_image);
+
+            DenoiseProcessor denoise_processor;
+            denoise_processor.process(raw_image, 2);
             raw_processor.ppm_tiff_writer(*raw_image, output_file);
             return raw_image;
         } catch (const std::exception& e) {
@@ -72,8 +75,7 @@ public:
 RawImage* process_raw(
         const unsigned short* libraw_image, 
         int width, int height, int black_level, 
-        const float* cam_mul,
-        const char* output_file) {
+        const float* cam_mul, const char* output_file) {
     PhotoFusionImpl impl;
     return impl.process_raw(libraw_image, width, height, black_level, cam_mul, output_file);
 }

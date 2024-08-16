@@ -1,9 +1,10 @@
-#include "RawProcessor.h"
+#include "raw_processor.h"
 
 #ifdef USE_OPENMP
 #include <omp.h>
 #endif
 #include <iostream>
+#include <cstring>
 #include <algorithm>
 #include <mutex>  // 包含 std::mutex
 
@@ -102,6 +103,7 @@ void RawProcessor::raw2image(RawImage& raw_image) {
 #endif
 }
 
+// 白平衡处理
 void RawProcessor::scale_colors(RawImage& raw_image) {
     float dmin = DBL_MAX, dmax = 0;
     for (const auto mul : raw_image.cam_mul) {
@@ -112,13 +114,13 @@ void RawProcessor::scale_colors(RawImage& raw_image) {
             dmax = mul;
         }
     }
-    // TODO 这里有一个highlight，意思是要不要对高光处理，默认是不对高光处理，所以会把dmax置为dmin
     dmax = dmin;
     unsigned short maximum = raw_image.maximum - raw_image.black_level;
 
     std::vector<float> scale_mul(4);
     for (int i = 0; i < 4; ++i) {
-        scale_mul[i] = (raw_image.cam_mul[i] /= dmax) * 65535.0 / maximum;
+        // TODO 这里有个问题，有点暗，当前先在这里 * 2
+        scale_mul[i] = 2 * (raw_image.cam_mul[i] /= dmax) * 65535.0 / maximum;
     }
     for (int idx = 0; idx < raw_image.height * raw_image.width; ++idx) {
         auto& pix = raw_image.image[idx];
@@ -559,11 +561,11 @@ void convert_to_rgb_loop(RawImage& raw_image, float out_cam[3][4]) {
     for (img = raw_image.image[0], row = 0; row < raw_image.height; row++) {
         for (col = 0; col < raw_image.width; col++, img += 4) {
             out[0] = out_cam[0][0] * img[0] + out_cam[0][1] * img[1] +
-                 out_cam[0][2] * img[2];
+                out_cam[0][2] * img[2];
             out[1] = out_cam[1][0] * img[0] + out_cam[1][1] * img[1] +
-                 out_cam[1][2] * img[2];
+                out_cam[1][2] * img[2];
             out[2] = out_cam[2][0] * img[0] + out_cam[2][1] * img[1] +
-                 out_cam[2][2] * img[2];
+                out_cam[2][2] * img[2];
             img[0] = CLIP((int)out[0]);
             img[1] = CLIP((int)out[1]);
             img[2] = CLIP((int)out[2]);
@@ -779,6 +781,16 @@ void RawProcessor::gamma_adjustment(RawImage& raw_image) {
         }
     }*/
     gamma_curve(raw_image, gamm[0], gamm[1], 2, int((t_white << 3) / 1.));
+
+    raw_image.rgb_image = (unsigned short(*)[3])malloc(height * width * sizeof(*raw_image.rgb_image));
+    for (int row = 0; row < height; row++) {
+        for (int col = 0; col < width; col++) {
+            int pix = row * width + col;
+            for (int c = 0; c < 3; ++c) {
+                raw_image.rgb_image[pix][c] = raw_image.curve[raw_image.image[pix][c]] >> 8;
+            }
+        }
+    }
 }
 
 void write_ppm_tiff(RawImage& raw_image) {
@@ -806,7 +818,8 @@ void write_ppm_tiff(RawImage& raw_image) {
         for (row = 0; row < height; row++, soff += rstep) {
             for (col = 0; col < width; col++, soff += cstep) {
                 for (int c = 0; c < 3; ++c) {
-                    ppm[col * 3 + c] = curve[raw_image.image[soff][c]] >> 8;
+                    // ppm[col * 3 + c] = curve[raw_image.image[soff][c]] >> 8;
+                    ppm[col * 3 + c] = raw_image.rgb_image[soff][c];
                 }
             }
             fwrite(ppm.data(), 3 * output_bps / 8, width, raw_image.output);

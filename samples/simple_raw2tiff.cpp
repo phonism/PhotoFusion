@@ -1,7 +1,6 @@
 #include <iostream>
 #include <fstream>
-#include "ImageIO.h"
-#include "PhotoFusionAPI.h"
+#include "photofusion_api.h"
 
 int main(int argc, char** argv) {
     /*

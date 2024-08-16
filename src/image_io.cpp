@@ -1,6 +1,9 @@
 #include <iostream>
 #include <time.h>
-#include "ImageIO.h"
+#include <cstring>
+#include <cmath>
+#include <algorithm>
+#include "image_io.h"
 
 RawImage* ImageIO::read_raw_image(const char* filename) {
     RawImage* rawImage;

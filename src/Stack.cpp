@@ -1,5 +1,6 @@
-#include "Stack.h"
+#include "stack.h"
 #include <cmath>
+#include <cstring>
 #ifdef USE_FFTW
 #include <fftw3.h>
 #endif
@@ -27,8 +28,6 @@ double mse_loss(RawImage* img1, RawImage* img2, int tx, int ty) {
     }
     return loss / count;
 }
-
-
 
 void brute_force(std::vector<RawImage*>& images) {
     int height = images[0]->height;

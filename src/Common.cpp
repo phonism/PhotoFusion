@@ -1,4 +1,4 @@
-#include "Common.h"
+#include "common.h"
 
 const double xyzd50_srgb[3][3] = {
     {0.436083, 0.385083, 0.143055},

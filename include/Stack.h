@@ -3,8 +3,8 @@
 
 #include <vector>
 #include <iostream>
-#include "Common.h"
-#include "RawImage.h"
+#include "common.h"
+#include "raw_image.h"
 
 class StackProcessor {
 public:
