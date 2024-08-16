@@ -7,6 +7,12 @@ set -eu
 #CXX_COMPILER=/usr/local/opt/llvm/bin/clang++
 CXX_COMPILER=clang++
 BUILD_CONFIG=Release
+BASE_DIR=./
+PLATFORM=iOS
+CMAKE_SYSTEM_NAME=iOS
+CMAKE_OSX_SYSROOT=iphoneos
+BINARY_PACKAGE_BUILD=ON
+ARCHS=arm64
 
 CONFIG_FILE="${BASE_DIR}/env-${PLATFORM}.sh"
 
@@ -48,3 +54,4 @@ config_and_build() {
   --config $BUILD_CONFIG \
   --target PhotoFusionAPI --
 }
+config_and_build
