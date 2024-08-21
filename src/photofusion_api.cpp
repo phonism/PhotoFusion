@@ -7,6 +7,7 @@
 #include "raw_image.h"
 #include "denoise.h"
 
+
 class PhotoFusionImpl {
 public:
     void raw2tiff(const char* input_file, const char* output_file) {
@@ -50,8 +51,13 @@ public:
             raw_processor.gamma_adjustment(*raw_image);
 
             DenoiseProcessor denoise_processor;
-            denoise_processor.process(raw_image, 2);
+            denoise_processor.process(raw_image, 3);
+
+#ifdef USE_JPEG
+            raw_processor.write_jpeg(*raw_image, output_file);
+#else
             raw_processor.ppm_tiff_writer(*raw_image, output_file);
+#endif
             return raw_image;
         } catch (const std::exception& e) {
             std::cerr << "An error occurred: " << e.what() << std::endl;

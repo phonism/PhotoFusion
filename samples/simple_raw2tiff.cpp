@@ -12,7 +12,7 @@ int main(int argc, char** argv) {
             io->width, io->height, 
             io->black_level, io->cam_mul, "output.tiff");
             */
-    raw2tiff("./photo.nef", "output.tiff");
+    raw2tiff("./photo.nef", "output.jpg");
 
     return 0;
 }

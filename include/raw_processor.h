@@ -75,6 +75,8 @@ public:
 
     static void gamma_adjustment(RawImage& raw_image);
 
+    static void write_jpeg(RawImage& raw_image, const char* filename);
+
 };
 
 #endif // RAW_PROCESSOR_H

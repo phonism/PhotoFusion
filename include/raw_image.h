@@ -4,6 +4,7 @@
 #include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <cstdint>
 
 struct RawImage {
     unsigned int width;
@@ -25,6 +26,7 @@ struct RawImage {
     int (*histogram)[0x2000] = NULL;
 
     unsigned *oprof = NULL;
+    int output_bps = 8;
 
     double gamm[6] = {0.45, 4.5, 0, 0, 0, 0};
     FILE *output;

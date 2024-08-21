@@ -7,6 +7,10 @@
 #include <cstring>
 #include <algorithm>
 #include <mutex>  // 包含 std::mutex
+#ifdef USE_JPEG
+#include <jpeglib.h>
+#endif
+#include <setjmp.h>
 
 #ifdef USE_GCD
 #include <dispatch/dispatch.h>
@@ -695,7 +699,7 @@ void tiff_set(struct new_tiff_hdr *th, ushort *ntag, ushort tag, ushort type, in
 void tiff_head(RawImage& raw_image, struct new_tiff_hdr *th, int full) {
     int c, psize = 0;
     struct tm *t;
-    int output_bps = 8;
+    int output_bps = raw_image.output_bps;
     auto& oprof = raw_image.oprof;
 
     memset(th, 0, sizeof *th);
@@ -787,10 +791,11 @@ void RawProcessor::gamma_adjustment(RawImage& raw_image) {
         for (int col = 0; col < width; col++) {
             int pix = row * width + col;
             for (int c = 0; c < 3; ++c) {
-                raw_image.rgb_image[pix][c] = raw_image.curve[raw_image.image[pix][c]] >> 8;
+                raw_image.rgb_image[pix][c] = raw_image.curve[raw_image.image[pix][c]];
             }
         }
     }
+    std::cout << raw_image.rgb_image[657 * 8280 + 4394][1] << std::endl;
 }
 
 void write_ppm_tiff(RawImage& raw_image) {
@@ -804,7 +809,7 @@ void write_ppm_tiff(RawImage& raw_image) {
         auto& curve = raw_image.curve;
         auto& oprof = raw_image.oprof;
 
-        int output_bps = 8;
+        int output_bps = raw_image.output_bps;
         std::vector<unsigned char> ppm(width * 4 * output_bps / 8);
         ppm2 = (unsigned short *)ppm.data();
         tiff_head(raw_image, &th, 1);
@@ -819,10 +824,19 @@ void write_ppm_tiff(RawImage& raw_image) {
             for (col = 0; col < width; col++, soff += cstep) {
                 for (int c = 0; c < 3; ++c) {
                     // ppm[col * 3 + c] = curve[raw_image.image[soff][c]] >> 8;
-                    ppm[col * 3 + c] = raw_image.rgb_image[soff][c];
+                    //ppm[col * 3 + c] = raw_image.rgb_image[soff][c];
+                    if (output_bps == 8) {
+                        ppm[col * 3 + c] = raw_image.rgb_image[soff][c] >> 8;
+                    } else {
+                        ppm2[col * 3 + c] = raw_image.rgb_image[soff][c];
+                    }
                 }
             }
-            fwrite(ppm.data(), 3 * output_bps / 8, width, raw_image.output);
+            if (output_bps == 8) {
+                fwrite(ppm.data(), 3 * output_bps / 8, width, raw_image.output);
+            } else {
+                fwrite(ppm2, 3 * output_bps / 8, width, raw_image.output);
+            }
         }
     } catch (...) {
     }
@@ -843,3 +857,46 @@ int RawProcessor::ppm_tiff_writer(RawImage& raw_image, const char *filename) {
     fclose(f);
     return 0;
 }
+
+#ifdef USE_JPEG
+void RawProcessor::write_jpeg(RawImage& raw_image, const char* filename) {
+    struct jpeg_compress_struct cinfo;
+    struct jpeg_error_mgr jerr; 
+    int width = raw_image.width;
+    int height = raw_image.height;
+    
+    FILE* outfile;
+    if ((outfile = fopen(filename, "wb")) == NULL) {
+        fprintf(stderr, "can't open %s\n", filename);
+        return;
+    } 
+    cinfo.err = jpeg_std_error(&jerr);
+    jpeg_create_compress(&cinfo);
+    jpeg_stdio_dest(&cinfo, outfile);
+    cinfo.image_width = width;
+    cinfo.image_height = height;
+    cinfo.input_components = 3;
+    cinfo.in_color_space = JCS_RGB;
+    jpeg_set_defaults(&cinfo);
+    jpeg_set_quality(&cinfo, 100, TRUE); // 质量值为75
+    jpeg_start_compress(&cinfo, TRUE);
+    JSAMPROW row_pointer[1];
+    unsigned char* row_data = new unsigned char[width * 3];
+
+    while (cinfo.next_scanline < cinfo.image_height) {
+        // 将16位数据缩放到8位范围
+        for (int i = 0; i < width; ++i) {
+            row_data[i * 3 + 0] = static_cast<unsigned char>(raw_image.rgb_image[cinfo.next_scanline * raw_image.width + i][0] >> 8);
+            row_data[i * 3 + 1] = static_cast<unsigned char>(raw_image.rgb_image[cinfo.next_scanline * raw_image.width + i][1] >> 8);
+            row_data[i * 3 + 2] = static_cast<unsigned char>(raw_image.rgb_image[cinfo.next_scanline * raw_image.width + i][2] >> 8);
+        }
+        row_pointer[0] = row_data;
+        jpeg_write_scanlines(&cinfo, row_pointer, 1);
+    }
+
+    delete[] row_data; // 释放动态分配的内存
+    jpeg_finish_compress(&cinfo);
+    fclose(outfile);
+    jpeg_destroy_compress(&cinfo);
+}
+#endif

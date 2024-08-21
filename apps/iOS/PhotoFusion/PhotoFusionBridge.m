@@ -6,6 +6,7 @@
 //
 
 #import "photofusion_api.h"
+#import "raw_image.h"
 #import "PhotoFusion-Bridging-Header.h"
 
 

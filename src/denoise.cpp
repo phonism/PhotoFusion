@@ -36,30 +36,49 @@ void apply_gaussian_blur_channel(RawImage* raw_image, int channel, int kernel_si
     auto image = raw_image->yuv_image;
     std::vector<std::vector<double>> kernel = generate_gaussian_kernel(kernel_size, sigma);
     int radius = kernel_size / 2;
-    std::vector<unsigned short> temp(width * height);
 
-#ifdef USE_OPENMP
-    #pragma omp parallel for
-#endif
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            double sum = 0.0;
-            for (int ky = -radius; ky <= radius; ++ky) {
-                for (int kx = -radius; kx <= radius; ++kx) {
-                    int ny = std::min(std::max(y + ky, 0), height - 1);
-                    int nx = std::min(std::max(x + kx, 0), width - 1);
-                    sum += image[ny * width + nx][channel] * kernel[ky + radius][kx + radius];
-                }
+    auto _apply_gaussian_blur_channel = [&](int x, int y) {
+        double sum = 0.0;
+        for (int ky = -radius; ky <= radius; ++ky) {
+            for (int kx = -radius; kx <= radius; ++kx) {
+                int ny = std::min(std::max(y + ky, 0), height - 1);
+                int nx = std::min(std::max(x + kx, 0), width - 1);
+                sum += image[ny * width + nx][channel] * kernel[ky + radius][kx + radius];
             }
-            temp[y * width + x] = static_cast<unsigned short>(sum);
         }
-    }
+        raw_image->denoised_image[y * width + x][channel] = static_cast<unsigned short>(sum);
+    };
+    parallel_for_image(height, width, [&](int x, int y) {
+            _apply_gaussian_blur_channel(x, y);
+    });
+}
 
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            raw_image->denoised_image[y * width + x][channel] = temp[y * width + x];
+void apply_bilateral_filter_block(RawImage* raw_image, int x, int y, int channel, int kernel_size, double sigma_color, double sigma_space, std::vector<std::vector<double>>& spatial_kernel) {
+    int width = raw_image->width;
+    int height = raw_image->height;
+    auto& yuv_image = raw_image->yuv_image;
+    int radius = kernel_size / 2;
+
+    double sum = 0.0;
+    double weight_sum = 0.0;
+    unsigned short center_value = yuv_image[y * width + x][channel];
+
+    for (int ky = -radius; ky <= radius; ++ky) {
+        for (int kx = -radius; kx <= radius; ++kx) {
+            int ny = std::min(std::max(y + ky, 0), height - 1);
+            int nx = std::min(std::max(x + kx, 0), width - 1);
+            unsigned short neighbor_value = yuv_image[ny * width + nx][channel];
+
+            double color_dist = (center_value - neighbor_value) * (center_value - neighbor_value) / (2 * sigma_color * sigma_color);
+            double spatial_weight = spatial_kernel[ky + radius][kx + radius];
+            double color_weight = std::exp(-color_dist);
+            double weight = spatial_weight * color_weight;
+
+            sum += neighbor_value * weight;
+            weight_sum += weight;
         }
     }
+    raw_image->denoised_image[y * width + x][channel] = static_cast<unsigned short>(sum / weight_sum);
 }
 
 void apply_bilateral_filter(RawImage* raw_image, int channel, int kernel_size, double sigma_color, double sigma_space) {
@@ -76,46 +95,32 @@ void apply_bilateral_filter(RawImage* raw_image, int channel, int kernel_size, d
             spatial_kernel[ky + radius][kx + radius] = std::exp(-(ky * ky + kx * kx) / (2 * sigma_space * sigma_space));
         }
     }
+    auto apply_bilateral_filter_block = [&](int x, int y) {
+        double sum = 0.0;
+        double weight_sum = 0.0;
+        unsigned short center_value = yuv_image[y * width + x][channel];
 
+        for (int ky = -radius; ky <= radius; ++ky) {
+            for (int kx = -radius; kx <= radius; ++kx) {
+                int ny = std::min(std::max(y + ky, 0), height - 1);
+                int nx = std::min(std::max(x + kx, 0), width - 1);
+                unsigned short neighbor_value = yuv_image[ny * width + nx][channel];
 
-    // 双边滤波
-#ifdef USE_OPENMP
-    #pragma omp parallel for
-#endif
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            double sum = 0.0;
-            double weight_sum = 0.0;
-            unsigned short center_value = yuv_image[y * width + x][channel];
+                double color_dist = (center_value - neighbor_value) * (center_value - neighbor_value) / (2 * sigma_color * sigma_color);
+                double spatial_weight = spatial_kernel[ky + radius][kx + radius];
+                double color_weight = std::exp(-color_dist);
+                double weight = spatial_weight * color_weight;
 
-            for (int ky = -radius; ky <= radius; ++ky) {
-                for (int kx = -radius; kx <= radius; ++kx) {
-                    int ny = std::min(std::max(y + ky, 0), height - 1);
-                    int nx = std::min(std::max(x + kx, 0), width - 1);
-                    unsigned short neighbor_value = yuv_image[ny * width + nx][channel];
-
-                    double color_dist = (center_value - neighbor_value) * (center_value - neighbor_value) / (2 * sigma_color * sigma_color);
-                    double spatial_weight = spatial_kernel[ky + radius][kx + radius];
-                    double color_weight = std::exp(-color_dist);
-                    double weight = spatial_weight * color_weight;
-
-                    sum += neighbor_value * weight;
-                    weight_sum += weight;
-                }
+                sum += neighbor_value * weight;
+                weight_sum += weight;
             }
-            temp[y * width + x] = static_cast<unsigned short>(sum / weight_sum);
         }
-    }
+        raw_image->denoised_image[y * width + x][channel] = static_cast<unsigned short>(sum / weight_sum);
+    };
 
-    // 更新图像
-#ifdef USE_OPENMP
-    #pragma omp parallel for
-#endif
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            raw_image->denoised_image[y * width + x][channel] = temp[y * width + x];
-        }
-    }
+    parallel_for_image(height, width, [&](int x, int y) {
+            apply_bilateral_filter_block(x, y); 
+    });
 }
 
 void convert_rgb_to_yuv(RawImage* raw_image) {
@@ -124,45 +129,41 @@ void convert_rgb_to_yuv(RawImage* raw_image) {
 
     raw_image->yuv_image = (unsigned short(*)[3])malloc(height * width * sizeof(*raw_image->yuv_image));
 
-#ifdef USE_OPENMP
-    #pragma omp parallel for
-#endif
-    for (int row = 0; row < height; ++row) {
-        for (int col = 0; col < width; ++col) { 
-            int pix = row * width + col;
-            unsigned short r = raw_image->rgb_image[pix][0];
-            unsigned short g = raw_image->rgb_image[pix][1];
-            unsigned short b = raw_image->rgb_image[pix][2];
-            raw_image->yuv_image[pix][0] = RGB2Y(r, g, b);
-            raw_image->yuv_image[pix][1] = RGB2U(r, g, b);
-            raw_image->yuv_image[pix][2] = RGB2V(r, g, b);
-        }
-    }
+    auto _convert_rgb_to_yuv = [&](int x, int y) {
+        int pix = y * width + x;
+        unsigned short r = raw_image->rgb_image[pix][0];
+        unsigned short g = raw_image->rgb_image[pix][1];
+        unsigned short b = raw_image->rgb_image[pix][2];
+        raw_image->yuv_image[pix][0] = RGB2Y_16BIT(r, g, b);
+        raw_image->yuv_image[pix][1] = RGB2U_16BIT(r, g, b);
+        raw_image->yuv_image[pix][2] = RGB2V_16BIT(r, g, b);
+    };
+    parallel_for_image(height, width, [&](int x, int y) {
+            _convert_rgb_to_yuv(x, y);
+    });
 }
 
 void convert_yuv_to_rgb(RawImage* raw_image) {
     int width = raw_image->width;
     int height = raw_image->height;
 
-#ifdef USE_OPENMP
-    #pragma omp parallel for
-#endif
-    for (int row = 0; row < height; ++row) {
-        for (int col = 0; col < width; ++col) {
-            int pix = row * width + col;
-            unsigned short y = raw_image->denoised_image[pix][0];
-            unsigned short u = raw_image->denoised_image[pix][1];
-            unsigned short v = raw_image->denoised_image[pix][2];
+    auto _convert_yuv_to_rgb = [&](int x, int y) {
+        int pix = y * width + x;
+        unsigned short Y = raw_image->denoised_image[pix][0];
+        unsigned short U = raw_image->denoised_image[pix][1];
+        unsigned short V = raw_image->denoised_image[pix][2];
 
-            unsigned short r = YUV2R(y, u, v);
-            unsigned short g = YUV2G(y, u, v);
-            unsigned short b = YUV2B(y, u, v);
+        unsigned short R = YUV2R_16BIT(Y, U, V);
+        unsigned short G = YUV2G_16BIT(Y, U, V);
+        unsigned short B = YUV2B_16BIT(Y, U, V);
 
-            raw_image->rgb_image[pix][0] = r;
-            raw_image->rgb_image[pix][1] = g;
-            raw_image->rgb_image[pix][2] = b;
-        }
-    }
+        raw_image->rgb_image[pix][0] = R;
+        raw_image->rgb_image[pix][1] = G;
+        raw_image->rgb_image[pix][2] = B;
+    };
+    parallel_for_image(height, width, [&](int x, int y) {
+            _convert_yuv_to_rgb(x, y);
+    });
 }
 
 void compute_integral_image(RawImage* raw_image) {
@@ -217,7 +218,7 @@ inline uint64_t get_block_sum(RawImage* raw_image, int c, int x1, int y1, int x2
     return block_sum;
 }
 
-int sum_max = 256 * 7 * 7;
+int sum_max = 65536 * 7 * 7;
 int sum_min = -sum_max;
 std::vector<float> gaussian_cache(sum_max * 2 + 1);
 
@@ -303,30 +304,32 @@ void nonlocal_means_denoising(
     auto yuv_image = raw_image->yuv_image;
     auto denoised_image = raw_image->denoised_image;
 
-    // 遍历图像中的每个像素
-#ifdef USE_OPENMP
-    #pragma omp parallel for collapse(2) schedule(static)
-#endif
-    for (int y = half_search; y < height - half_search; ++y) {
-        for (int x = half_search; x < width - half_search; ++x) {
-            float sum_weights = 0.0;
-            float sum_pixels = 0.0;
-
-            // 遍历搜索窗口
-            for (int j = -half_search; j <= half_search; ++j) {
-                for (int i = -half_search; i <= half_search; ++i) {
-                    float weight = fast_compute_similarity(raw_image, channel, x, y, x + i, y + j, template_window_size, h);
-                    //float weight = compute_similarity(raw_image, channel, x, y, x + i, y + j, template_window_size, h);
-                    int idx = (y + j) * width + (x + i);
-                    sum_weights += weight;
-                    sum_pixels += weight * yuv_image[idx][channel];
-                }
-            }
-
-            int idx = y * width + x;
-            denoised_image[idx][channel] = static_cast<unsigned short>(sum_pixels / sum_weights);
+    auto _nonlocal_means_denoising = [&](int x, int y) {
+        if (y < half_search || y >= height - half_search) {
+            return;
         }
-    }
+        if (x < half_search || x >= width - half_search) {
+            return;
+        }
+        float sum_weights = 0.0;
+        float sum_pixels = 0.0;
+
+        // 遍历搜索窗口
+        for (int j = -half_search; j <= half_search; ++j) {
+            for (int i = -half_search; i <= half_search; ++i) {
+                float weight = fast_compute_similarity(raw_image, channel, x, y, x + i, y + j, template_window_size, h);
+                int idx = (y + j) * width + (x + i);
+                sum_weights += weight;
+                sum_pixels += weight * yuv_image[idx][channel];
+            }
+        }
+
+        int idx = y * width + x;
+        denoised_image[idx][channel] = static_cast<unsigned short>(sum_pixels / sum_weights);
+    };
+    parallel_for_image(height, width, [&](int x, int y) {
+            _nonlocal_means_denoising(x, y);
+    });
 }
 
 void DenoiseProcessor::process(RawImage* raw_image, int algorithm) {
@@ -345,7 +348,7 @@ void DenoiseProcessor::process(RawImage* raw_image, int algorithm) {
         if (!raw_image->integral) {
             raw_image->integral = (uint64_t(*)[3])malloc(height * width * sizeof(*raw_image->integral));
         }
-        int h = 100;
+        int h = 1000;
         int template_window_size = 7;
         int search_window_size = 35;
         initialize_gaussian_cache(h);
@@ -358,11 +361,13 @@ void DenoiseProcessor::process(RawImage* raw_image, int algorithm) {
         apply_gaussian_blur_channel(raw_image, 1, 15, 1);
         apply_gaussian_blur_channel(raw_image, 2, 15, 1);
     } else if (algorithm == 3) {
-        apply_bilateral_filter(raw_image, 1, 11, 20, 5);
-        apply_bilateral_filter(raw_image, 2, 11, 20, 5);
+        apply_bilateral_filter(raw_image, 1, 11, 4000, 5);
+        apply_bilateral_filter(raw_image, 2, 11, 4000, 5);
     }
 
+    std::cout << raw_image->rgb_image[657 * 8280 + 4394][1] << std::endl;
     convert_yuv_to_rgb(raw_image);
     std::cout << raw_image->yuv_image[657 * 8280 + 4394][1] << std::endl;
     std::cout << raw_image->denoised_image[657 * 8280 + 4394][1] << std::endl;
+    std::cout << raw_image->rgb_image[657 * 8280 + 4394][1] << std::endl;
 }

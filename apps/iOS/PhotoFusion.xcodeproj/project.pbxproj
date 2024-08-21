@@ -42,6 +42,10 @@
 		56515E942C636992008B143C /* PhotoFusion-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "PhotoFusion-Bridging-Header.h"; sourceTree = "<group>"; };
 		5680E1B22C6372B10013F39E /* PhotoFusionBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PhotoFusionBridge.m; sourceTree = "<group>"; };
 		5693FB092C6F5C7900D07B72 /* libPhotoFusionAPI.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libPhotoFusionAPI.a; path = "../../build-iOS/libPhotoFusionAPI.a"; sourceTree = "<group>"; };
+		5693FB0B2C75A33300D07B72 /* libjpeg.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libjpeg.dylib; path = "../../../../github/libjpeg-turbo/universal/libjpeg.dylib"; sourceTree = "<group>"; };
+		5693FB0D2C75A40C00D07B72 /* libjpeg.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libjpeg.a; path = "../../../../github/libjpeg-turbo/install-arm64/lib/libjpeg.a"; sourceTree = "<group>"; };
+		5693FB0F2C75ADF900D07B72 /* libjpeg.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libjpeg.a; path = "../../../../github/libjpeg-turbo/universal/libjpeg.a"; sourceTree = "<group>"; };
+		5693FB122C75CFB400D07B72 /* libjpeg.62.4.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libjpeg.62.4.0.dylib; path = "../../../../github/libjpeg-turbo/build-iOS/libjpeg.62.4.0.dylib"; sourceTree = "<group>"; };
 		56E1D7862C47BFEC008A445A /* PhotoFusionAPP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhotoFusionAPP.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		56E1D7892C47BFEC008A445A /* PhotoFusionApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoFusionApp.swift; sourceTree = "<group>"; };
 		56E1D78B2C47BFEC008A445A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -144,6 +148,10 @@
 		56E1D7B32C47C089008A445A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				5693FB122C75CFB400D07B72 /* libjpeg.62.4.0.dylib */,
+				5693FB0D2C75A40C00D07B72 /* libjpeg.a */,
+				5693FB0F2C75ADF900D07B72 /* libjpeg.a */,
+				5693FB0B2C75A33300D07B72 /* libjpeg.dylib */,
 				5693FB092C6F5C7900D07B72 /* libPhotoFusionAPI.a */,
 				56515E922C636785008B143C /* libPhotoFusionAPI.a */,
 			);
@@ -383,6 +391,7 @@
 					"$(OTHER_CFLAGS)",
 					"-stdlib=libc++",
 				);
+				OTHER_LDFLAGS = "";
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -445,6 +454,7 @@
 					"$(OTHER_CFLAGS)",
 					"-stdlib=libc++",
 				);
+				OTHER_LDFLAGS = "";
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
@@ -483,6 +493,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "/Users/luqi03/workspace/online_github/PhotoFusion/build-iOS";
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.luckyqueen.PhotoFusion;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -526,6 +537,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "/Users/luqi03/workspace/online_github/PhotoFusion/build-iOS";
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "";
 				PRODUCT_BUNDLE_IDENTIFIER = com.luckyqueen.PhotoFusion;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(PhotoFusion)
+set(CMAKE_VERBOSE_MAKEFILE ON)
 
 # 设置 C++ 标准
 set(CMAKE_CXX_STANDARD 17)
@@ -9,6 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(USE_OPENMP "Enable OpenMP support" ON)
 option(USE_FFTW "Enable FFTW support" ON)
 option(USE_GCD "Enable GCD support" ON)
+option(USE_JPEG "Enable GCD support" ON)
 
 # 包含头文件目录
 include_directories(include)
@@ -34,6 +36,10 @@ if(USE_GCD)
     add_definitions(-DUSE_GCD)
 endif()
 
+if(USE_JPEG)
+    find_package(JPEG REQUIRED)
+    include_directories(${JPEG_INCLUDE_DIRS})
+endif()
 # 添加优化编译选项
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -ffast-math -std=c++11")
 
@@ -41,8 +47,9 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -ffast-math -std=c++11")
 file(GLOB SRC_FILES ./src/*.cpp)
 add_library(PhotoFusionAPI STATIC ${SRC_FILES})
 
-if(OpenMP_CXX_FOUND AND USE_FFTW)
-    target_link_libraries(PhotoFusionAPI ${ly_lib_shared} ${OpenMP_CXX_FLAGS} ${FFTW_LIBRARIES} fftw3_threads fftw3)
+if(USE_JPEG)
+    target_link_libraries(PhotoFusionAPI ${JPEG_LIBRARIES})
 else()
-    target_link_libraries(PhotoFusionAPI ${ly_lib_shared})
+    target_link_libraries(PhotoFusionAPI ${JPEG_LIBRARIES})
 endif()
+
