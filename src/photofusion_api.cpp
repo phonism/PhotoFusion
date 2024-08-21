@@ -22,7 +22,7 @@ public:
     }
 
     RawImage* process_raw(
-            const unsigned short* libraw_image, 
+            const unsigned short* image, 
             int width, int height, int black_level, 
             const float* cam_mul,
             const char* output_file) {
@@ -34,7 +34,7 @@ public:
             raw_image->raw_data = static_cast<unsigned short*>(std::malloc(width * height * sizeof(unsigned short)));
             long long sum = 0;
             for (int i = 0; i < height * width; ++i) {
-                raw_image->raw_data[i] = libraw_image[i];
+                raw_image->raw_data[i] = image[i];
             }
             if (cam_mul != nullptr) {
                 for (int i = 0; i < 4; ++i) {
@@ -79,11 +79,11 @@ public:
 
 // 实现C风格的函数
 RawImage* process_raw(
-        const unsigned short* libraw_image, 
+        const unsigned short* image, 
         int width, int height, int black_level, 
         const float* cam_mul, const char* output_file) {
     PhotoFusionImpl impl;
-    return impl.process_raw(libraw_image, width, height, black_level, cam_mul, output_file);
+    return impl.process_raw(image, width, height, black_level, cam_mul, output_file);
 }
 
 bool process_stack(RawImage** images, int count) {

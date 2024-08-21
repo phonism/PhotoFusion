@@ -16,7 +16,7 @@ typedef struct PhotoFusionContext PhotoFusionContext;
 void raw2tiff(const char* input_file, const char* output_file);
 
 struct RawImage* process_raw(
-        const unsigned short* libraw_image, 
+        const unsigned short* image, 
         int width, int height, int black_level, 
         const float* cam_mul,
         const char* output_file);
